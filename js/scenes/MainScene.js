@@ -93,9 +93,6 @@ export class MainScene extends Phaser.Scene {
             color: ui.title.color
         }).setOrigin(0.5);
 
-        // 运算模式选择器
-        this.createOperationModeSelector(centerX, ui.operationMode.y);
-
         // 目标数字显示
         const targetBgY = ui.target.bgY;
         this.add.circle(
@@ -125,7 +122,7 @@ export class MainScene extends Phaser.Scene {
             color: ui.target.valueColor
         }).setOrigin(0.5);
 
-        // 表达式显示
+        // 表达式显示（支持换行）
         const expressionY = ui.expression.y;
         this.add.text(
             centerX, 
@@ -137,11 +134,16 @@ export class MainScene extends Phaser.Scene {
             }
         ).setOrigin(0.5);
         
+        // 计算最大宽度（不能超过UI面板宽度）
+        const maxExpressionWidth = this.config.uiWidth - 40; // 留出边距
+        
         this.expressionText = this.add.text(centerX, expressionY + 30, '', {
             fontSize: ui.expression.valueFontSize,
             fontStyle: 'bold',
-            color: ui.expression.valueColor
-        }).setOrigin(0.5);
+            color: ui.expression.valueColor,
+            wordWrap: { width: maxExpressionWidth, useAdvancedWrap: true },
+            align: 'center'
+        }).setOrigin(0.5, 0);
 
         // 当前结果（可隐藏）
         const currentSumY = ui.currentSum.y;
@@ -183,6 +185,10 @@ export class MainScene extends Phaser.Scene {
 
         this.currentSumToggleButton = toggleButton;
 
+        // 运算模式选择器（移到Score上方）
+        const operationY = ui.score.y - 100;
+        this.createOperationModeSelector(centerX, operationY);
+
         // 分数
         const scoreY = ui.score.y;
         this.add.text(
@@ -214,12 +220,11 @@ export class MainScene extends Phaser.Scene {
             color: labelColor
         }).setOrigin(0.5);
 
-        // 创建四个运算按钮
+        // 创建三个运算按钮（移除除法）
         const modes = [
             { mode: operationModes.ADD, symbol: operationSymbols.add },
             { mode: operationModes.SUBTRACT, symbol: operationSymbols.subtract },
-            { mode: operationModes.MULTIPLY, symbol: operationSymbols.multiply },
-            { mode: operationModes.DIVIDE, symbol: operationSymbols.divide }
+            { mode: operationModes.MULTIPLY, symbol: operationSymbols.multiply }
         ];
 
         this.operationButtons = [];
@@ -383,16 +388,6 @@ export class MainScene extends Phaser.Scene {
                 } else {
                     targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
                 }
-            } else if (this.currentOperationMode === this.config.operationModes.DIVIDE) {
-                const possibleValues = GridUtils.generatePossibleDivides(
-                    modeRules.minTarget, 
-                    modeRules.maxTarget
-                );
-                if (possibleValues.length > 0) {
-                    targetValue = Phaser.Utils.Array.GetRandom(possibleValues);
-                } else {
-                    targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
-                }
             } else {
                 // 加法和减法直接随机生成
                 targetValue = Phaser.Math.Between(
@@ -488,14 +483,6 @@ export class MainScene extends Phaser.Scene {
             
             case this.config.operationModes.MULTIPLY:
                 return values.reduce((product, val) => product * val, 1);
-            
-            case this.config.operationModes.DIVIDE:
-                let result = values[0];
-                for (let i = 1; i < values.length; i++) {
-                    if (values[i] === 0) return NaN;
-                    result = result / values[i];
-                }
-                return Number.isInteger(result) ? result : NaN;
             
             default:
                 return 0;
@@ -603,15 +590,6 @@ export class MainScene extends Phaser.Scene {
             case this.config.operationModes.MULTIPLY:
                 return values.reduce((product, val) => product * val, 1);
             
-            case this.config.operationModes.DIVIDE:
-                let result = values[0];
-                for (let i = 1; i < values.length; i++) {
-                    if (values[i] === 0) return NaN; // 除零错误
-                    result = result / values[i];
-                }
-                // 检查是否为整数
-                return Number.isInteger(result) ? result : NaN;
-            
             default:
                 return 0;
         }
@@ -639,16 +617,43 @@ export class MainScene extends Phaser.Scene {
         this.currentSelectionSum = this.calculateResult();
         const expression = this.generateExpressionString();
         
-        // 更新表达式显示
+        // 更新表达式显示（支持自动调整字体大小和换行）
         if (expression) {
             const result = this.currentSelectionSum;
-            if (!isNaN(result)) {
-                this.expressionText.setText(`${expression} = ${result}`);
-            } else {
-                this.expressionText.setText(`${expression} = Invalid`);
+            let expressionStr = !isNaN(result) ? `${expression} = ${result}` : `${expression} = Invalid`;
+            
+            // 计算最大宽度（不能超过UI面板）
+            const maxWidth = this.config.uiWidth - 40;
+            
+            // 先设置默认字体大小
+            let fontSize = parseInt(this.config.ui.expression.valueFontSize);
+            this.expressionText.setFontSize(`${fontSize}px`);
+            this.expressionText.setText(expressionStr);
+            
+            // 检查文本宽度，如果太长则减小字体
+            // 使用临时文本对象来测量宽度
+            const tempText = this.add.text(0, 0, expressionStr, {
+                fontSize: `${fontSize}px`,
+                fontStyle: 'bold',
+                wordWrap: { width: maxWidth, useAdvancedWrap: true }
+            });
+            
+            // 如果单行文本太宽，减小字体
+            if (tempText.width > maxWidth) {
+                while (fontSize > 12 && tempText.width > maxWidth) {
+                    fontSize -= 2;
+                    tempText.setFontSize(`${fontSize}px`);
+                }
             }
+            
+            tempText.destroy();
+            
+            // 应用调整后的字体大小
+            this.expressionText.setFontSize(`${fontSize}px`);
+            this.expressionText.setText(expressionStr);
         } else {
             this.expressionText.setText('');
+            this.expressionText.setFontSize(this.config.ui.expression.valueFontSize);
         }
         
         // 更新结果显示
