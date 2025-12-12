@@ -315,10 +315,40 @@ export class MainScene extends Phaser.Scene {
      */
     setNewTarget() {
         const modeRules = this.config.rules[this.currentOperationMode];
-        this.targetSum = Phaser.Math.Between(
-            modeRules.minTarget, 
-            modeRules.maxTarget
-        );
+        let targetValue;
+        
+        // 对于乘法和除法，生成可解的目标值
+        if (this.currentOperationMode === this.config.operationModes.MULTIPLY) {
+            const possibleValues = GridUtils.generatePossibleMultiplies(
+                modeRules.minTarget, 
+                modeRules.maxTarget
+            );
+            if (possibleValues.length > 0) {
+                targetValue = Phaser.Utils.Array.GetRandom(possibleValues);
+            } else {
+                // 如果没有找到可能的解，使用默认范围
+                targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
+            }
+        } else if (this.currentOperationMode === this.config.operationModes.DIVIDE) {
+            const possibleValues = GridUtils.generatePossibleDivides(
+                modeRules.minTarget, 
+                modeRules.maxTarget
+            );
+            if (possibleValues.length > 0) {
+                targetValue = Phaser.Utils.Array.GetRandom(possibleValues);
+            } else {
+                // 如果没有找到可能的解，使用默认范围
+                targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
+            }
+        } else {
+            // 加法和减法直接随机生成（这些总是有解的）
+            targetValue = Phaser.Math.Between(
+                modeRules.minTarget, 
+                modeRules.maxTarget
+            );
+        }
+        
+        this.targetSum = targetValue;
         
         this.tweens.add({
             targets: this.targetText,
