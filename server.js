@@ -6,7 +6,8 @@
 const WebSocket = require('ws');
 const http = require('http');
 
-const PORT = 8080;
+// 支持命令行参数指定端口，默认8080
+const PORT = process.argv[2] ? parseInt(process.argv[2]) : 8080;
 
 // 房间管理
 const rooms = new Map(); // roomCode -> Room
@@ -21,7 +22,7 @@ class Room {
         this.gameState = null; // 游戏状态：null, 'waiting', 'playing', 'finished'
         this.gameData = null; // 游戏数据（棋盘、目标值等）
         this.scores = new Map(); // playerId -> score
-        this.countdown = 180; // 3分钟倒计时
+        this.countdown = 60; // 1分钟倒计时
         this.countdownTimer = null;
     }
 
@@ -394,33 +395,48 @@ wss.on('connection', (ws, req) => {
     function handleDisconnect(disconnectedPlayerId, disconnectedRoomCode) {
         if (!disconnectedPlayerId) return;
 
+        // 如果房间号未提供，尝试从players中查找
+        if (!disconnectedRoomCode) {
+            const playerInfo = players.get(disconnectedPlayerId);
+            if (playerInfo && playerInfo.roomCode) {
+                disconnectedRoomCode = playerInfo.roomCode;
+            }
+        }
+
         players.delete(disconnectedPlayerId);
 
         if (disconnectedRoomCode && rooms.has(disconnectedRoomCode)) {
-            const room = rooms.get(roomCode);
-            room.removePlayer(playerId);
+            const room = rooms.get(disconnectedRoomCode);
+            if (!room) {
+                console.log('Room not found:', disconnectedRoomCode);
+                return;
+            }
+            
+            room.removePlayer(disconnectedPlayerId);
 
             // 如果房主离开，选择新的房主或关闭房间
-            if (room.hostId === playerId) {
+            if (room.hostId === disconnectedPlayerId) {
                 if (room.players.size > 0) {
                     // 选择第一个玩家作为新房主
                     const newHostId = room.players.keys().next().value;
                     room.hostId = newHostId;
                     const newHost = room.players.get(newHostId);
-                    newHost.isHost = true;
+                    if (newHost) {
+                        newHost.isHost = true;
 
-                    // 通知新房主
-                    if (newHost.ws.readyState === WebSocket.OPEN) {
-                        newHost.ws.send(JSON.stringify({
-                            type: 'host_transferred',
-                            isHost: true
-                        }));
+                        // 通知新房主
+                        if (newHost.ws.readyState === WebSocket.OPEN) {
+                            newHost.ws.send(JSON.stringify({
+                                type: 'host_transferred',
+                                isHost: true
+                            }));
+                        }
                     }
                 } else {
                     // 房间为空，删除房间
                     room.cleanup();
-                    rooms.delete(roomCode);
-                    console.log('Room deleted:', roomCode);
+                    rooms.delete(disconnectedRoomCode);
+                    console.log('Room deleted:', disconnectedRoomCode);
                 }
             }
 
@@ -435,8 +451,10 @@ wss.on('connection', (ws, req) => {
     }
 });
 
-server.listen(PORT, () => {
-    console.log(`WebSocket server running on ws://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`WebSocket server running on ws://0.0.0.0:${PORT}`);
+    console.log(`Local access: ws://localhost:${PORT}`);
+    console.log(`Network access: ws://<your-ip>:${PORT}`);
     console.log('Server ready for connections');
 });
 

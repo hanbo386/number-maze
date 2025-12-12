@@ -23,9 +23,16 @@ export class NetworkManager {
 
     /**
      * 连接到服务器
-     * @param {string} serverUrl - 服务器地址
+     * @param {string} serverUrl - 服务器地址（可选，默认使用当前页面的主机和8080端口）
      */
-    connect(serverUrl = 'ws://localhost:8080') {
+    connect(serverUrl = null) {
+        // 如果没有提供服务器地址，自动使用当前页面的主机
+        if (!serverUrl) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.hostname;
+            const port = '8080'; // WebSocket服务器端口
+            serverUrl = `${protocol}//${host}:${port}`;
+        }
         try {
             this.ws = new WebSocket(serverUrl);
             

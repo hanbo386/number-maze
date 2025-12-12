@@ -13,7 +13,8 @@ export class ResultScene extends Phaser.Scene {
     init(data) {
         this.playerScore = data?.score || 0;
         this.networkManager = data?.networkManager || null;
-        this.rankings = [];
+        this.rankings = data?.rankings || []; // 接收排名数据
+        this.playerId = this.networkManager?.playerId || null; // 获取当前玩家ID
     }
 
     create() {
@@ -81,17 +82,23 @@ export class ResultScene extends Phaser.Scene {
     }
 
     loadRankings() {
-        // TODO: 从服务器获取排名
-        // 暂时使用模拟数据
-        setTimeout(() => {
-            const mockRankings = [
-                { name: 'Player 1', score: 500 },
-                { name: 'You', score: this.playerScore },
-                { name: 'Player 2', score: 200 }
-            ].sort((a, b) => b.score - a.score);
-
-            this.displayRankings(mockRankings);
-        }, 500);
+        // 如果已经有排名数据，直接显示
+        if (this.rankings && this.rankings.length > 0) {
+            // 标记当前玩家
+            const rankingsWithYou = this.rankings.map(player => ({
+                ...player,
+                isYou: player.playerId === this.playerId
+            }));
+            this.displayRankings(rankingsWithYou);
+        } else {
+            // 如果没有排名数据，显示提示
+            this.rankingContainer.add(
+                this.add.text(0, 0, 'No rankings available', {
+                    fontSize: '20px',
+                    color: '#888888'
+                }).setOrigin(0.5)
+            );
+        }
     }
 
     displayRankings(rankings) {
@@ -99,28 +106,31 @@ export class ResultScene extends Phaser.Scene {
 
         rankings.forEach((player, index) => {
             const y = index * 60;
-            const isYou = player.name === 'You';
+            const isYou = player.isYou || player.playerId === this.playerId;
             
-            // 排名数字
+            // 排名数字（左侧）
             this.rankingContainer.add(
-                this.add.text(-200, y, `${index + 1}.`, {
+                this.add.text(-280, y, `${index + 1}.`, {
                     fontSize: '24px',
                     color: isYou ? '#00ffcc' : '#ffffff'
                 }).setOrigin(0, 0.5)
             );
 
-            // 玩家名称
+            // 玩家名称（中间，留出足够空间）
+            const playerName = player.name || `Player ${index + 1}`;
+            const displayName = isYou ? `${playerName} (You)` : playerName;
             this.rankingContainer.add(
-                this.add.text(-100, y, player.name, {
+                this.add.text(-80, y, displayName, {
                     fontSize: '24px',
                     fontStyle: isYou ? 'bold' : 'normal',
-                    color: isYou ? '#00ffcc' : '#aaaaaa'
+                    color: isYou ? '#00ffcc' : '#aaaaaa',
+                    maxWidth: 250 // 限制最大宽度，防止过长
                 }).setOrigin(0, 0.5)
             );
 
-            // 分数
+            // 分数（右侧，增加间距避免与名称重叠）
             this.rankingContainer.add(
-                this.add.text(100, y, player.score.toString(), {
+                this.add.text(250, y, (player.score || 0).toString(), {
                     fontSize: '24px',
                     fontStyle: 'bold',
                     color: isYou ? '#00ffcc' : '#ffffff'

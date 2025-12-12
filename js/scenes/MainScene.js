@@ -49,6 +49,7 @@ export class MainScene extends Phaser.Scene {
                 };
                 
                 this.networkManager.callbacks.onGameEnd = (rankings) => {
+                    this.gameRankings = rankings; // 保存排名数据
                     this.endGame();
                 };
             }
@@ -378,16 +379,30 @@ export class MainScene extends Phaser.Scene {
      * @param {number} seconds - 倒计时秒数
      */
     startCountdown(seconds) {
-        this.timeRemaining = seconds || 180;
+        this.timeRemaining = seconds || 60;
         
-        // 创建倒计时文本
+        // 创建倒计时文本（显示在左侧边栏，operation模式选择器上方）
         if (!this.countdownText) {
+            const centerX = this.config.uiCenterX;
+            const { ui } = this.config;
+            // operation模式选择器在 score.y - 100 的位置
+            const operationY = ui.score.y - 100;
+            // 倒计时显示在operation上方
+            const countdownY = operationY - 60;
+            
+            // 倒计时标签
+            this.add.text(centerX, countdownY - 25, 'Time:', {
+                fontSize: ui.operationMode.labelFontSize || '18px',
+                color: ui.operationMode.labelColor || '#aaaaaa'
+            }).setOrigin(0.5);
+            
+            // 倒计时文本
             this.countdownText = this.add.text(
-                this.config.gameWidth / 2,
-                50,
+                centerX,
+                countdownY + 5,
                 this.formatTime(this.timeRemaining),
                 {
-                    fontSize: '48px',
+                    fontSize: '32px',
                     fontStyle: 'bold',
                     color: '#ffdd00'
                 }
@@ -442,7 +457,8 @@ export class MainScene extends Phaser.Scene {
         // 切换到结算场景
         this.scene.start('ResultScene', {
             score: this.score,
-            networkManager: this.networkManager
+            networkManager: this.networkManager,
+            rankings: this.gameRankings || null // 传递排名数据
         });
     }
 
