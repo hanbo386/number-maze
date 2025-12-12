@@ -217,8 +217,23 @@ export class RoomScene extends Phaser.Scene {
             this.scene.start('MenuScene');
         });
 
-        // 初始化网络管理器（暂时使用模拟）
+        // 初始化网络管理器（必须在UI创建后，但在用户操作前）
         this.initNetworkManager();
+        
+        // 确保网络管理器已初始化
+        this.time.delayedCall(200, () => {
+            if (!this.networkManager) {
+                console.error('Network manager not initialized!');
+            } else {
+                console.log('Network manager ready, isConnected:', this.networkManager.isConnected);
+                
+                // 如果未连接，显示提示
+                if (!this.networkManager.isConnected) {
+                    console.warn('⚠️ Not connected to server');
+                    console.warn('⚠️ Please start the server: npm start');
+                }
+            }
+        });
     }
 
     createNumberPad() {
@@ -331,10 +346,17 @@ export class RoomScene extends Phaser.Scene {
 
     joinRoom() {
         if (this.roomCode.length !== 4) {
+            console.log('Room code must be 4 digits');
             return; // 必须输入4位数字
         }
         
         console.log('Joining room:', this.roomCode);
+        console.log('Network manager state:', {
+            exists: !!this.networkManager,
+            isConnected: this.networkManager?.isConnected,
+            isMockMode: this.networkManager?.isMockMode,
+            hasCallback: !!this.networkManager?.callbacks?.onRoomJoined
+        });
         
         // 隐藏加入按钮，显示等待提示
         if (this.joinButton) {
@@ -347,7 +369,46 @@ export class RoomScene extends Phaser.Scene {
         }
         
         if (this.networkManager) {
+            // 检查连接状态
+            if (!this.networkManager.isConnected) {
+                console.error('Not connected to server');
+                if (this.waitingText) {
+                    this.waitingText.setText('Error: Server not connected. Please start server: npm start');
+                    this.waitingText.setVisible(true);
+                }
+                // 重新显示加入按钮
+                if (this.joinButton && this.joinText) {
+                    this.joinButton.setVisible(true);
+                    this.joinText.setVisible(true);
+                }
+                return;
+            }
+            
+            // 确保回调已注册
+            if (!this.networkManager.callbacks.onRoomJoined) {
+                console.error('onRoomJoined callback not registered! Registering now...');
+                this.networkManager.callbacks.onRoomJoined = (data) => {
+                    console.log('Joined room callback received:', data);
+                    this.roomCode = data.roomCode;
+                    this.isHost = data.isHost || false;
+                    
+                    // 更新等待提示
+                    if (this.waitingText) {
+                        this.waitingText.setText('Waiting for host to start...');
+                        this.waitingText.setVisible(true);
+                    }
+                    
+                    // 显示玩家列表
+                    this.updatePlayerList(data.players || []);
+                };
+            }
+            
             this.networkManager.joinRoom(this.roomCode);
+        } else {
+            console.error('Network manager not initialized!');
+            if (this.waitingText) {
+                this.waitingText.setText('Error: Network not initialized');
+            }
         }
     }
 
@@ -405,8 +466,14 @@ export class RoomScene extends Phaser.Scene {
                 // 显示房间号
                 this.showRoomCode();
                 
-                // 添加自己到玩家列表
+                // 添加自己到玩家列表（初始只有自己）
                 this.updatePlayerList([{ name: 'You', isHost: true, playerId: data.playerId }]);
+                
+                // 确保开始按钮初始状态正确
+                if (this.startButton && this.startText) {
+                    this.startButton.setVisible(false);
+                    this.startText.setVisible(false);
+                }
             } else {
                 console.error('Invalid room creation data:', data);
             }
@@ -429,13 +496,29 @@ export class RoomScene extends Phaser.Scene {
             }
         };
 
-        this.networkManager.on('PlayerListUpdate', (players) => {
+        // 直接设置回调，确保能正确注册
+        this.networkManager.callbacks.onPlayerListUpdate = (players) => {
+            console.log('Player list updated:', players);
             this.updatePlayerList(players);
-        });
+        };
 
         this.networkManager.on('GameStart', (gameData) => {
             this.startGameWithData(gameData);
         });
+        
+        // 注册错误回调
+        this.networkManager.callbacks.onError = (error) => {
+            console.error('Network error:', error);
+            if (this.waitingText) {
+                this.waitingText.setText('Error: ' + (error.message || 'Unknown error'));
+                this.waitingText.setVisible(true);
+            }
+            // 重新显示加入按钮（如果是加入模式）
+            if (this.mode === 'join' && this.joinButton && this.joinText) {
+                this.joinButton.setVisible(true);
+                this.joinText.setVisible(true);
+            }
+        };
         
         // 尝试连接到服务器，如果失败则使用模拟模式
         try {

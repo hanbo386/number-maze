@@ -15,7 +15,9 @@ export class NetworkManager {
             onPlayerListUpdate: null,
             onGameStart: null,
             onGameEnd: null,
-            onScoreUpdate: null
+            onScoreUpdate: null,
+            onCountdownUpdate: null,
+            onError: null
         };
     }
 
@@ -39,32 +41,29 @@ export class NetworkManager {
 
             this.ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
-                // 连接错误时使用模拟模式
-                if (!this.isConnected) {
-                    this.useMockMode();
-                }
+                console.warn('⚠️ Server connection failed. Please make sure the server is running: npm start');
+                // 不自动切换到模拟模式，等待用户启动服务器
             };
 
             this.ws.onclose = () => {
                 console.log('Disconnected from server');
                 this.isConnected = false;
-                // 如果连接关闭且没有成功连接过，使用模拟模式
-                if (!this.isMockMode) {
-                    this.useMockMode();
-                }
+                console.warn('⚠️ Connection closed. Please check if the server is running.');
+                // 不自动切换到模拟模式
             };
 
-            // 设置超时，如果3秒内没有连接成功，使用模拟模式
+            // 设置超时提示，但不自动切换模式
             setTimeout(() => {
                 if (!this.isConnected && !this.isMockMode) {
-                    console.log('Connection timeout, using mock mode');
-                    this.useMockMode();
+                    console.warn('⚠️ Connection timeout. Server may not be running.');
+                    console.warn('⚠️ Please start the server with: npm start');
+                    console.warn('⚠️ Waiting for server connection...');
                 }
             }, 3000);
         } catch (error) {
             console.error('Failed to connect:', error);
-            // 如果WebSocket不可用，使用模拟模式
-            this.useMockMode();
+            console.warn('⚠️ Please start the server with: npm start');
+            // 不自动切换到模拟模式
         }
     }
 
@@ -131,6 +130,21 @@ export class NetworkManager {
                     this.callbacks.onScoreUpdate(message.scores);
                 }
                 break;
+
+            case 'countdown_update':
+                if (this.callbacks.onCountdownUpdate) {
+                    this.callbacks.onCountdownUpdate(message.timeRemaining);
+                }
+                break;
+
+            case 'error':
+                console.error('Server error:', message.message);
+                break;
+
+            case 'host_transferred':
+                // 房主转移通知
+                console.log('Host transferred');
+                break;
         }
     }
 
@@ -188,6 +202,20 @@ export class NetworkManager {
      * @param {string} roomCode - 房间号
      */
     joinRoom(roomCode) {
+        console.log('joinRoom called, roomCode:', roomCode, 'isMockMode:', this.isMockMode, 'isConnected:', this.isConnected);
+        
+        // 检查连接状态
+        if (!this.isConnected) {
+            console.error('Cannot join room: Not connected to server');
+            console.warn('⚠️ Please start the server with: npm start');
+            if (this.callbacks.onError) {
+                this.callbacks.onError({
+                    message: 'Not connected to server. Please start the server with: npm start'
+                });
+            }
+            return;
+        }
+        
         this.roomCode = roomCode;
         this.send({
             type: 'join_room',

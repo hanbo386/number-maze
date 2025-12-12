@@ -35,6 +35,23 @@ export class MainScene extends Phaser.Scene {
             this.targetSum = this.gameData.targetSum;
             this.targetText.setText(this.targetSum);
             this.startCountdown(this.gameData.countdown);
+            
+            // 注册网络回调
+            if (this.networkManager) {
+                this.networkManager.callbacks.onCountdownUpdate = (timeRemaining) => {
+                    this.timeRemaining = timeRemaining;
+                    if (this.countdownText) {
+                        this.countdownText.setText(this.formatTime(timeRemaining));
+                    }
+                    if (timeRemaining <= 0) {
+                        this.endGame();
+                    }
+                };
+                
+                this.networkManager.callbacks.onGameEnd = (rankings) => {
+                    this.endGame();
+                };
+            }
         } else {
             this.createGrid();
             this.setNewTarget();
@@ -377,21 +394,25 @@ export class MainScene extends Phaser.Scene {
             ).setOrigin(0.5);
         }
 
-        // 创建倒计时事件
-        this.countdownTimer = this.time.addEvent({
-            delay: 1000,
-            callback: () => {
-                this.timeRemaining--;
-                if (this.countdownText) {
-                    this.countdownText.setText(this.formatTime(this.timeRemaining));
-                }
+        // 对战模式：使用服务器同步的倒计时，不创建本地倒计时事件
+        // 单机模式：创建本地倒计时事件
+        if (this.gameMode !== 'multiplayer') {
+            // 创建倒计时事件
+            this.countdownTimer = this.time.addEvent({
+                delay: 1000,
+                callback: () => {
+                    this.timeRemaining--;
+                    if (this.countdownText) {
+                        this.countdownText.setText(this.formatTime(this.timeRemaining));
+                    }
 
-                if (this.timeRemaining <= 0) {
-                    this.endGame();
-                }
-            },
-            loop: true
-        });
+                    if (this.timeRemaining <= 0) {
+                        this.endGame();
+                    }
+                },
+                loop: true
+            });
+        }
     }
 
     /**
