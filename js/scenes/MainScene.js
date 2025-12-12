@@ -143,9 +143,9 @@ export class MainScene extends Phaser.Scene {
             color: ui.expression.valueColor
         }).setOrigin(0.5);
 
-        // 当前结果
+        // 当前结果（可隐藏）
         const currentSumY = ui.currentSum.y;
-        this.add.text(
+        this.currentSumLabel = this.add.text(
             centerX, 
             currentSumY, 
             ui.currentSum.label, 
@@ -160,6 +160,28 @@ export class MainScene extends Phaser.Scene {
             fontStyle: 'bold',
             color: ui.currentSum.valueColor
         }).setOrigin(0.5);
+
+        // 添加切换显示/隐藏按钮
+        this.currentSumVisible = true;
+        const toggleButton = this.add.text(
+            centerX, 
+            currentSumY + 100, 
+            'Hide', 
+            { 
+                fontSize: '16px', 
+                color: '#888888',
+                backgroundColor: '#333333',
+                padding: { x: 8, y: 4 }
+            }
+        ).setOrigin(0.5)
+         .setInteractive({ useHandCursor: true })
+         .setDepth(100);
+
+        toggleButton.on('pointerdown', () => {
+            this.toggleCurrentResultVisibility();
+        });
+
+        this.currentSumToggleButton = toggleButton;
 
         // 分数
         const scoreY = ui.score.y;
@@ -214,13 +236,15 @@ export class MainScene extends Phaser.Scene {
                 buttonSize / 2,
                 isActive ? ui.operationMode.activeColor : ui.operationMode.inactiveColor
             ).setInteractive({ useHandCursor: true })
-             .setStrokeStyle(2, isActive ? 0xffffff : 0x888888);
+             .setStrokeStyle(2, isActive ? 0xffffff : 0x888888)
+             .setDepth(100); // 设置高深度，确保按钮在最上层
 
             const symbolText = this.add.text(x, y + 35, item.symbol, {
                 fontSize: ui.operationMode.fontSize,
                 color: ui.operationMode.textColor,
                 fontStyle: 'bold'
-            }).setOrigin(0.5);
+            }).setOrigin(0.5)
+             .setDepth(101); // 文本在按钮之上
 
             // 绑定点击事件
             button.on('pointerdown', () => {
@@ -255,8 +279,25 @@ export class MainScene extends Phaser.Scene {
         // 清除当前选择
         this.clearSelection();
         
-        // 设置新的目标数字
-        this.setNewTarget();
+        // 设置新的目标数字（确保有解）
+        this.setNewTargetWithSolution();
+    }
+
+    /**
+     * 切换当前结果显示/隐藏
+     */
+    toggleCurrentResultVisibility() {
+        this.currentSumVisible = !this.currentSumVisible;
+        
+        if (this.currentSumVisible) {
+            this.currentSumLabel.setVisible(true);
+            this.currentSumText.setVisible(true);
+            this.currentSumToggleButton.setText('Hide');
+        } else {
+            this.currentSumLabel.setVisible(false);
+            this.currentSumText.setVisible(false);
+            this.currentSumToggleButton.setText('Show');
+        }
     }
 
     /**
@@ -311,42 +352,67 @@ export class MainScene extends Phaser.Scene {
     }
 
     /**
-     * 设置新的目标数字
+     * 设置新的目标数字（确保在当前网格中有解）
      */
-    setNewTarget() {
+    setNewTargetWithSolution() {
         const modeRules = this.config.rules[this.currentOperationMode];
         let targetValue;
+        let attempts = 0;
+        const maxAttempts = 50;
         
-        // 对于乘法和除法，生成可解的目标值
-        if (this.currentOperationMode === this.config.operationModes.MULTIPLY) {
-            const possibleValues = GridUtils.generatePossibleMultiplies(
-                modeRules.minTarget, 
-                modeRules.maxTarget
-            );
-            if (possibleValues.length > 0) {
-                targetValue = Phaser.Utils.Array.GetRandom(possibleValues);
-            } else {
-                // 如果没有找到可能的解，使用默认范围
-                targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
+        // 获取当前网格中所有tile的值
+        const gridValues = [];
+        for (let row = 0; row < this.config.gridSize; row++) {
+            for (let col = 0; col < this.config.gridSize; col++) {
+                const tile = this.grid[row][col];
+                if (tile && tile.active) {
+                    gridValues.push(tile.value);
+                }
             }
-        } else if (this.currentOperationMode === this.config.operationModes.DIVIDE) {
-            const possibleValues = GridUtils.generatePossibleDivides(
-                modeRules.minTarget, 
-                modeRules.maxTarget
-            );
-            if (possibleValues.length > 0) {
-                targetValue = Phaser.Utils.Array.GetRandom(possibleValues);
-            } else {
-                // 如果没有找到可能的解，使用默认范围
-                targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
-            }
-        } else {
-            // 加法和减法直接随机生成（这些总是有解的）
-            targetValue = Phaser.Math.Between(
-                modeRules.minTarget, 
-                modeRules.maxTarget
-            );
         }
+        
+        // 尝试生成一个在当前网格中有解的目标值
+        do {
+            if (this.currentOperationMode === this.config.operationModes.MULTIPLY) {
+                const possibleValues = GridUtils.generatePossibleMultiplies(
+                    modeRules.minTarget, 
+                    modeRules.maxTarget
+                );
+                if (possibleValues.length > 0) {
+                    targetValue = Phaser.Utils.Array.GetRandom(possibleValues);
+                } else {
+                    targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
+                }
+            } else if (this.currentOperationMode === this.config.operationModes.DIVIDE) {
+                const possibleValues = GridUtils.generatePossibleDivides(
+                    modeRules.minTarget, 
+                    modeRules.maxTarget
+                );
+                if (possibleValues.length > 0) {
+                    targetValue = Phaser.Utils.Array.GetRandom(possibleValues);
+                } else {
+                    targetValue = Phaser.Math.Between(modeRules.minTarget, modeRules.maxTarget);
+                }
+            } else {
+                // 加法和减法直接随机生成
+                targetValue = Phaser.Math.Between(
+                    modeRules.minTarget, 
+                    modeRules.maxTarget
+                );
+            }
+            
+            attempts++;
+            // 对于加法和减法，总是有解的，直接退出
+            if (this.currentOperationMode === this.config.operationModes.ADD || 
+                this.currentOperationMode === this.config.operationModes.SUBTRACT) {
+                break;
+            }
+            
+            // 检查当前网格中是否有解
+            if (this.hasSolutionInGrid(targetValue, gridValues)) {
+                break;
+            }
+        } while (attempts < maxAttempts);
         
         this.targetSum = targetValue;
         
@@ -359,6 +425,81 @@ export class MainScene extends Phaser.Scene {
                 this.targetText.setText(this.targetSum);
             }
         });
+    }
+
+    /**
+     * 设置新的目标数字（兼容旧代码）
+     */
+    setNewTarget() {
+        this.setNewTargetWithSolution();
+    }
+
+    /**
+     * 检查当前网格中是否存在可以达到目标值的组合
+     * @param {number} target - 目标值
+     * @param {Array<number>} values - 网格中的值列表
+     * @returns {boolean} 是否存在解
+     */
+    hasSolutionInGrid(target, values) {
+        if (values.length === 0) return false;
+        
+        // 检查所有可能的组合（最多4个数字）
+        const checkCombination = (arr, start, count, current) => {
+            if (count === 0) {
+                const result = this.calculateResultForValues(current);
+                return result === target;
+            }
+            
+            for (let i = start; i < arr.length; i++) {
+                if (checkCombination(arr, i + 1, count - 1, [...current, arr[i]])) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        
+        // 检查1-4个数字的组合
+        for (let len = 1; len <= Math.min(4, values.length); len++) {
+            if (checkCombination(values, 0, len, [])) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * 计算给定值列表的结果（用于检查是否有解）
+     * @param {Array<number>} values - 值列表
+     * @returns {number} 计算结果
+     */
+    calculateResultForValues(values) {
+        if (values.length === 0) return 0;
+        if (values.length === 1) return values[0];
+        
+        switch (this.currentOperationMode) {
+            case this.config.operationModes.ADD:
+                return values.reduce((sum, val) => sum + val, 0);
+            
+            case this.config.operationModes.SUBTRACT:
+                return values.reduce((result, val, index) => 
+                    index === 0 ? val : result - val
+                );
+            
+            case this.config.operationModes.MULTIPLY:
+                return values.reduce((product, val) => product * val, 1);
+            
+            case this.config.operationModes.DIVIDE:
+                let result = values[0];
+                for (let i = 1; i < values.length; i++) {
+                    if (values[i] === 0) return NaN;
+                    result = result / values[i];
+                }
+                return Number.isInteger(result) ? result : NaN;
+            
+            default:
+                return 0;
+        }
     }
 
     /**
