@@ -177,11 +177,34 @@ export class RoomScene extends Phaser.Scene {
         // 玩家列表容器
         this.playerListContainer = this.add.container(gameWidth / 2, 500);
 
-        // 等待房主开始游戏提示（非房主显示）
-        this.waitingText = this.add.text(gameWidth / 2, gameHeight - 150, 'Waiting for host to start...', {
+        // 加入按钮（初始禁用状态）
+        this.joinButton = this.add.rectangle(
+            gameWidth / 2,
+            gameHeight - 150,
+            200,
+            60,
+            0x444466
+        ).setInteractive({ useHandCursor: true })
+         .setStrokeStyle(2, 0x888888);
+
+        this.joinText = this.add.text(gameWidth / 2, gameHeight - 150, 'Join', {
+            fontSize: '28px',
+            fontStyle: 'bold',
+            color: '#888888'
+        }).setOrigin(0.5);
+
+        this.joinButton.on('pointerdown', () => {
+            if (this.roomCode.length === 4) {
+                this.joinRoom();
+            }
+        });
+
+        // 等待房主开始游戏提示（加入房间后显示）
+        this.waitingText = this.add.text(gameWidth / 2, gameHeight - 220, '', {
             fontSize: '24px',
             color: '#aaaaaa'
-        }).setOrigin(0.5);
+        }).setOrigin(0.5)
+         .setVisible(false);
 
         // 返回按钮
         const backButton = this.add.text(gameWidth / 2, gameHeight - 80, 'Back', {
@@ -204,49 +227,51 @@ export class RoomScene extends Phaser.Scene {
         const buttonSize = 50;
         const spacing = 20;
 
-        for (let i = 0; i < 10; i++) {
-            const row = Math.floor(i / 3);
-            const col = i % 3;
+        // 创建1-9的数字按钮（3x3网格）
+        for (let i = 1; i <= 9; i++) {
+            const row = Math.floor((i - 1) / 3);
+            const col = (i - 1) % 3;
             const x = startX + col * (buttonSize + spacing);
             const y = startY + row * (buttonSize + spacing);
 
-            const num = i === 9 ? 0 : i + 1; // 0在最后
-            if (i === 9) {
-                // 0按钮
-                const btn = this.add.circle(x + 25, y + 25, buttonSize / 2, 0x444466)
-                    .setInteractive({ useHandCursor: true })
-                    .setStrokeStyle(2, 0x888888);
-                
-                this.add.text(x + 25, y + 25, '0', {
-                    fontSize: '24px',
-                    fontStyle: 'bold',
-                    color: '#ffffff'
-                }).setOrigin(0.5);
+            const btn = this.add.rectangle(x, y, buttonSize, buttonSize, 0x444466)
+                .setInteractive({ useHandCursor: true })
+                .setStrokeStyle(2, 0x888888);
+            
+            const numText = this.add.text(x, y, i.toString(), {
+                fontSize: '24px',
+                fontStyle: 'bold',
+                color: '#ffffff'
+            }).setOrigin(0.5);
 
-                btn.on('pointerdown', () => {
-                    this.addDigit(0);
-                });
-            } else {
-                const btn = this.add.rectangle(x, y, buttonSize, buttonSize, 0x444466)
-                    .setInteractive({ useHandCursor: true })
-                    .setStrokeStyle(2, 0x888888);
-                
-                this.add.text(x, y, num.toString(), {
-                    fontSize: '24px',
-                    fontStyle: 'bold',
-                    color: '#ffffff'
-                }).setOrigin(0.5);
-
-                btn.on('pointerdown', () => {
-                    this.addDigit(num);
-                });
-            }
+            btn.on('pointerdown', () => {
+                this.addDigit(i);
+            });
         }
 
-        // 删除按钮
+        // 第四行：0按钮（左侧）和删除按钮（右侧）
+        const fourthRowY = startY + 3 * (buttonSize + spacing);
+        
+        // 0按钮（在第四行左侧）
+        const zeroX = startX;
+        const zeroBtn = this.add.rectangle(zeroX, fourthRowY, buttonSize, buttonSize, 0x444466)
+            .setInteractive({ useHandCursor: true })
+            .setStrokeStyle(2, 0x888888);
+        
+        this.add.text(zeroX, fourthRowY, '0', {
+            fontSize: '24px',
+            fontStyle: 'bold',
+            color: '#ffffff'
+        }).setOrigin(0.5);
+
+        zeroBtn.on('pointerdown', () => {
+            this.addDigit(0);
+        });
+
+        // 删除按钮（在第四行右侧）
         const deleteBtn = this.add.rectangle(
             startX + 2 * (buttonSize + spacing),
-            startY + 2 * (buttonSize + spacing),
+            fourthRowY,
             buttonSize,
             buttonSize,
             0xff0055
@@ -255,7 +280,7 @@ export class RoomScene extends Phaser.Scene {
 
         this.add.text(
             startX + 2 * (buttonSize + spacing),
-            startY + 2 * (buttonSize + spacing),
+            fourthRowY,
             '⌫',
             {
                 fontSize: '24px',
@@ -273,9 +298,11 @@ export class RoomScene extends Phaser.Scene {
             this.roomCode += digit.toString();
             this.updateRoomCodeDisplay();
             
-            // 如果输入了4位数字，自动加入房间
-            if (this.roomCode.length === 4) {
-                this.joinRoom();
+            // 如果输入了4位数字，启用加入按钮
+            if (this.roomCode.length === 4 && this.joinButton) {
+                this.joinButton.setFillStyle(0x00ff00);
+                this.joinButton.setStrokeStyle(2, 0xffffff);
+                this.joinText.setColor('#000000');
             }
         }
     }
@@ -284,6 +311,13 @@ export class RoomScene extends Phaser.Scene {
         if (this.roomCode.length > 0) {
             this.roomCode = this.roomCode.slice(0, -1);
             this.updateRoomCodeDisplay();
+            
+            // 如果不足4位，禁用加入按钮
+            if (this.roomCode.length < 4 && this.joinButton) {
+                this.joinButton.setFillStyle(0x444466);
+                this.joinButton.setStrokeStyle(2, 0x888888);
+                this.joinText.setColor('#888888');
+            }
         }
     }
 
@@ -296,7 +330,22 @@ export class RoomScene extends Phaser.Scene {
     }
 
     joinRoom() {
+        if (this.roomCode.length !== 4) {
+            return; // 必须输入4位数字
+        }
+        
         console.log('Joining room:', this.roomCode);
+        
+        // 隐藏加入按钮，显示等待提示
+        if (this.joinButton) {
+            this.joinButton.setVisible(false);
+            this.joinText.setVisible(false);
+        }
+        if (this.waitingText) {
+            this.waitingText.setText('Joining room...');
+            this.waitingText.setVisible(true);
+        }
+        
         if (this.networkManager) {
             this.networkManager.joinRoom(this.roomCode);
         }
@@ -363,15 +412,22 @@ export class RoomScene extends Phaser.Scene {
             }
         };
 
-        this.networkManager.on('RoomJoined', (data) => {
+        this.networkManager.callbacks.onRoomJoined = (data) => {
             console.log('Joined room:', data);
             this.roomCode = data.roomCode;
             this.isHost = data.isHost || false;
+            
+            // 更新等待提示
+            if (this.waitingText) {
+                this.waitingText.setText('Waiting for host to start...');
+                this.waitingText.setVisible(true);
+            }
+            
             if (this.mode === 'join') {
                 // 加入房间后，显示玩家列表
                 this.updatePlayerList(data.players || []);
             }
-        });
+        };
 
         this.networkManager.on('PlayerListUpdate', (players) => {
             this.updatePlayerList(players);
