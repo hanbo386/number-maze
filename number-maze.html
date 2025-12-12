@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>数字迷阵 - Number Matrix (iPad Layout)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a2e; /* 深蓝背景 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            color: white;
+        }
+        #game-container {
+            box-shadow: 0 0 30px rgba(0,0,0,0.6);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+    <!-- 引入 Phaser 3 -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+
+<div id="game-container"></div>
+
+<script>
+/**
+ * 游戏配置与常量
+ */
+const CONFIG = {
+    gridSize: 8,
+    tileSize: 90,   // 增大尺寸以适应平板
+    spacing: 12,    // 增大间距
+    colors: {
+        bg: 0x16213e,
+        uiPanel: 0x1f2b4d,
+        tileBase: 0xffffff,
+        line: 0x00ffcc, // 亮青色
+        text: '#ffffff',
+        score: '#00ff00',
+        penalty: '#ff0055'
+    }
+};
+
+// 计算棋盘实际大小
+const BOARD_SIZE = CONFIG.gridSize * CONFIG.tileSize + (CONFIG.gridSize - 1) * CONFIG.spacing;
+
+// 游戏画布尺寸 - 针对横屏 iPad 优化 (1280x900 比例)
+const GAME_WIDTH = 1280;
+const GAME_HEIGHT = 900;
+
+// UI 布局调整：缩小左侧区域，放大棋盘区域
+const UI_WIDTH = 280; // 新的 UI 宽度 (从 360 缩小到 280)
+const UI_CENTER_X = UI_WIDTH / 2;
+const GRID_OFFSET_X = UI_WIDTH + 20; // 棋盘从 UI 区域 (280) 留出 20px 间距后开始 (即 300)
+const GRID_OFFSET_Y = (GAME_HEIGHT - BOARD_SIZE) / 2;
+
+/**
+ * 主游戏场景
+ */
+class MainScene extends Phaser.Scene {
+    constructor() {
+        super('MainScene');
+    }
+
+    preload() {
+        // 动态生成素材，无需外部图片
+        this.generateTextures();
+    }
+
+    create() {
+        // 游戏状态
+        this.grid = [];           // 存储 Tile 对象的二维数组
+        this.selectedTiles = [];  // 当前选中的 Tile 列表
+        this.isDragging = false;
+        this.score = 0;
+        this.targetSum = 0;
+        this.currentSelectionSum = 0;
+        
+        // 1. 创建背景
+        this.add.rectangle(GAME_WIDTH/2, GAME_HEIGHT/2, GAME_WIDTH, GAME_HEIGHT, CONFIG.colors.bg);
+        
+        // 2. 左侧 UI 面板背景 (使用新的 UI 宽度和中心点)
+        this.add.rectangle(UI_CENTER_X, GAME_HEIGHT/2, UI_WIDTH, GAME_HEIGHT, CONFIG.colors.uiPanel);
+        // 装饰线 (新的分隔线位置)
+        this.add.rectangle(UI_WIDTH, GAME_HEIGHT/2, 4, GAME_HEIGHT, 0x000000, 0.3);
+        
+        // 3. 初始化UI
+        this.createUI();
+
+        // 4. 初始化棋盘
+        this.createGrid();
+
+        // 5. 设置新的目标数字
+        this.setNewTarget();
+
+        // 6. 输入事件监听
+        this.input.on('pointerup', this.handleInputEnd, this);
+        
+        // 7. 连线绘制层
+        this.graphics = this.add.graphics();
+    }
+
+    update() {
+        // 每一帧绘制连接线
+        this.drawSelectionLine();
+    }
+
+    /**
+     * 动态生成纹理（圆角矩形）
+     */
+    generateTextures() {
+        const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+        
+        // 基础方块
+        graphics.fillStyle(0xffffff);
+        graphics.fillRoundedRect(0, 0, CONFIG.tileSize, CONFIG.tileSize, 16); // 圆角更大
+        graphics.generateTexture('tile', CONFIG.tileSize, CONFIG.tileSize);
+        
+        // 粒子纹理
+        graphics.clear();
+        graphics.fillStyle(0xffffff);
+        graphics.fillCircle(8, 8, 8);
+        graphics.generateTexture('particle', 16, 16);
+    }
+
+    /**
+     * 创建左侧UI
+     */
+    createUI() {
+        const centerX = UI_CENTER_X; // 左侧面板中心 (使用新的中心点)
+        
+        // 标题
+        this.add.text(centerX, 80, '数字迷阵', { 
+            fontSize: '36px', 
+            fontStyle: 'bold', 
+            color: '#ffffff' 
+        }).setOrigin(0.5);
+
+        // 目标数字显示 (核心区域)
+        const targetBgY = 250;
+        this.add.circle(centerX, targetBgY, 110, 0x16213e).setStrokeStyle(4, 0x444466);
+        
+        this.add.text(centerX, targetBgY - 60, '目标数字', { fontSize: '24px', color: '#aaaaaa' }).setOrigin(0.5);
+        this.targetText = this.add.text(centerX, targetBgY + 10, '0', { 
+            fontSize: '96px', 
+            fontFamily: 'Arial',
+            fontStyle: 'bold',
+            color: '#ffffff' 
+        }).setOrigin(0.5);
+
+        // 当前选中总和
+        const currentSumY = 480;
+        this.add.text(centerX, currentSumY, '当前总和', { fontSize: '24px', color: '#aaaaaa' }).setOrigin(0.5);
+        this.currentSumText = this.add.text(centerX, currentSumY + 50, '0', { 
+            fontSize: '60px', 
+            fontStyle: 'bold',
+            color: '#ffdd00',
+        }).setOrigin(0.5);
+
+        // 分数
+        const scoreY = 750;
+        this.add.text(centerX, scoreY, '得分', { fontSize: '24px', color: '#aaaaaa' }).setOrigin(0.5);
+        this.scoreText = this.add.text(centerX, scoreY + 50, '0', { fontSize: '48px', color: '#00ffcc' }).setOrigin(0.5);
+    }
+
+    /**
+     * 创建 8x8 棋盘
+     */
+    createGrid() {
+        // 使用新的 GRID_OFFSET_X
+        const startX = GRID_OFFSET_X + CONFIG.tileSize / 2;
+        const startY = GRID_OFFSET_Y + CONFIG.tileSize / 2;
+
+        for (let row = 0; row < CONFIG.gridSize; row++) {
+            this.grid[row] = [];
+            for (let col = 0; col < CONFIG.gridSize; col++) {
+                const x = startX + col * (CONFIG.tileSize + CONFIG.spacing);
+                const y = startY + row * (CONFIG.tileSize + CONFIG.spacing);
+                
+                this.addTile(row, col, x, y);
+            }
+        }
+    }
+
+    /**
+     * 添加单个方块
+     */
+    addTile(row, col, x, y, val = null) {
+        // 随机 1-9
+        const value = val || Phaser.Math.Between(1, 9);
+        
+        // 容器
+        const container = this.add.container(x, y);
+        container.setSize(CONFIG.tileSize, CONFIG.tileSize);
+
+        // 背景图
+        const sprite = this.add.image(0, 0, 'tile');
+        const color = this.getNumberColor(value);
+        sprite.setTint(color);
+        
+        // 数字文本
+        const text = this.add.text(0, 0, value.toString(), {
+            fontSize: '48px', // 字体变大
+            fontStyle: 'bold',
+            color: '#000000'
+        }).setOrigin(0.5);
+
+        container.add([sprite, text]);
+        
+        // 绑定数据
+        const tileData = {
+            row: row,
+            col: col,
+            value: value,
+            sprite: sprite,
+            text: text,
+            container: container,
+            active: true
+        };
+        
+        // 将数据绑定到 container 以便交互
+        container.setData('tile', tileData);
+        
+        // 交互事件
+        container.setInteractive();
+        container.on('pointerdown', () => this.handleTileDown(tileData));
+        container.on('pointerover', () => this.handleTileOver(tileData));
+
+        // 存入网格
+        this.grid[row][col] = tileData;
+
+        // 入场动画
+        container.setScale(0);
+        this.tweens.add({
+            targets: container,
+            scale: 1,
+            duration: 300,
+            ease: 'Back.out'
+        });
+
+        return tileData;
+    }
+
+    /**
+     * 获取数字对应的颜色 (HSL 渐变)
+     */
+    getNumberColor(value) {
+        const hue = 200 - (value * 15); 
+        const color = Phaser.Display.Color.HSLToColor(hue / 360, 0.85, 0.65); // 稍微亮一点
+        return color.color;
+    }
+
+    /**
+     * 设置新的目标数字
+     */
+    setNewTarget() {
+        this.targetSum = Phaser.Math.Between(10, 30);
+        
+        this.tweens.add({
+            targets: this.targetText,
+            scale: 1.2,
+            duration: 100,
+            yoyo: true,
+            onComplete: () => {
+                this.targetText.setText(this.targetSum);
+            }
+        });
+    }
+
+    /**
+     * 处理按下
+     */
+    handleTileDown(tile) {
+        if (!tile.active) return;
+        
+        this.isDragging = true;
+        this.addToSelection(tile);
+    }
+
+    /**
+     * 处理滑过
+     */
+    handleTileOver(tile) {
+        if (!this.isDragging || !tile.active) return;
+
+        const index = this.selectedTiles.indexOf(tile);
+
+        if (index === -1) {
+            const lastTile = this.selectedTiles[this.selectedTiles.length - 1];
+            if (this.isAdjacent(lastTile, tile)) {
+                this.addToSelection(tile);
+            }
+        } else if (index === this.selectedTiles.length - 2) {
+            this.removeFromSelection();
+        }
+    }
+
+    isAdjacent(t1, t2) {
+        const dx = Math.abs(t1.row - t2.row);
+        const dy = Math.abs(t1.col - t2.col);
+        return dx <= 1 && dy <= 1;
+    }
+
+    addToSelection(tile) {
+        this.selectedTiles.push(tile);
+        this.currentSelectionSum += tile.value;
+        this.updateSelectionVisuals();
+        
+        this.tweens.add({
+            targets: tile.container,
+            scale: 0.85,
+            duration: 100,
+            yoyo: true
+        });
+    }
+
+    removeFromSelection() {
+        const removed = this.selectedTiles.pop();
+        this.currentSelectionSum -= removed.value;
+        this.updateSelectionVisuals();
+    }
+
+    updateSelectionVisuals() {
+        this.currentSumText.setText(this.currentSelectionSum);
+        
+        if (this.currentSelectionSum === this.targetSum) {
+            this.currentSumText.setColor('#00ff00');
+            this.targetText.setColor('#00ff00');
+        } else if (this.currentSelectionSum > this.targetSum) {
+            this.currentSumText.setColor('#ff0055');
+            this.targetText.setColor('#ffffff');
+        } else {
+            this.currentSumText.setColor('#ffdd00');
+            this.targetText.setColor('#ffffff');
+        }
+    }
+
+    drawSelectionLine() {
+        this.graphics.clear();
+        if (this.selectedTiles.length === 0) return;
+
+        // 调整：线条更粗 (14) 且使用 CONFIG.colors.line (亮青色) 并提高不透明度 (0.8)
+        this.graphics.lineStyle(14, CONFIG.colors.line, 0.8); 
+        this.graphics.beginPath();
+        
+        const first = this.selectedTiles[0];
+        this.graphics.moveTo(first.container.x, first.container.y);
+
+        for (let i = 1; i < this.selectedTiles.length; i++) {
+            const t = this.selectedTiles[i];
+            this.graphics.lineTo(t.container.x, t.container.y);
+        }
+
+        // 跟随鼠标效果
+        if (this.isDragging) {
+            const pointer = this.input.activePointer;
+            // 简单判断鼠标是否在游戏区域内，避免线条乱飞
+            this.graphics.lineTo(pointer.x, pointer.y);
+        }
+
+        this.graphics.strokePath();
+    }
+
+    handleInputEnd() {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+        this.graphics.clear();
+
+        if (this.currentSelectionSum === this.targetSum && this.selectedTiles.length > 0) {
+            this.successMatch();
+        } else {
+            if (this.selectedTiles.length > 1) {
+                this.failMatch();
+            }
+        }
+
+        this.selectedTiles = [];
+        this.currentSelectionSum = 0;
+        this.currentSumText.setText('0');
+        this.currentSumText.setColor('#ffdd00');
+        this.targetText.setColor('#ffffff');
+    }
+
+    successMatch() {
+        const points = this.selectedTiles.length * 10 + (this.selectedTiles.length > 3 ? 50 : 0);
+        this.score += points;
+        this.scoreText.setText(this.score);
+
+        if (this.selectedTiles.length > 0) {
+            const lastTile = this.selectedTiles[this.selectedTiles.length - 1];
+            this.showScorePopup(lastTile.container.x, lastTile.container.y, points, false);
+        }
+
+        this.selectedTiles.forEach(tile => {
+            this.createExplosion(tile.container.x, tile.container.y, this.getNumberColor(tile.value));
+            tile.active = false;
+            tile.container.destroy();
+            this.grid[tile.row][tile.col] = null;
+        });
+
+        this.refillGrid();
+
+        this.time.delayedCall(500, () => {
+            this.setNewTarget();
+        });
+
+        this.cameras.main.shake(200, 0.01);
+    }
+
+    failMatch() {
+        const penalty = 5;
+        this.score = Math.max(0, this.score - penalty);
+        this.scoreText.setText(this.score);
+        
+        if (this.selectedTiles.length > 0) {
+            const lastTile = this.selectedTiles[this.selectedTiles.length - 1];
+            this.showScorePopup(lastTile.container.x, lastTile.container.y, -penalty, true);
+        }
+        
+        this.selectedTiles.forEach(tile => {
+            this.tweens.add({
+                targets: tile.container,
+                x: '+=6',
+                duration: 50,
+                yoyo: true,
+                repeat: 3
+            });
+        });
+
+        this.cameras.main.shake(100, 0.005);
+    }
+
+    createExplosion(x, y, color) {
+        const particles = this.add.particles(0, 0, 'particle', {
+            x: x,
+            y: y,
+            speed: { min: 80, max: 200 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 1.5, end: 0 },
+            alpha: { start: 1, end: 0 },
+            tint: color,
+            lifespan: 600,
+            blendMode: 'ADD',
+            quantity: 12
+        });
+        
+        this.time.delayedCall(700, () => {
+            particles.destroy();
+        });
+    }
+
+    showScorePopup(x, y, score, isPenalty) {
+        const textStr = isPenalty ? `${score}` : `+${score}`;
+        const color = isPenalty ? '#ff0055' : '#00ff00';
+        
+        const popup = this.add.text(x, y, textStr, {
+            fontSize: '50px', // 字体变大
+            fontStyle: 'bold',
+            color: color,
+            stroke: '#000000',
+            strokeThickness: 5
+        }).setOrigin(0.5);
+        
+        popup.setDepth(100);
+
+        this.tweens.add({
+            targets: popup,
+            y: y - 100,
+            alpha: 0,
+            scale: 1.5,
+            duration: 900,
+            ease: 'Back.out',
+            onComplete: () => {
+                popup.destroy();
+            }
+        });
+    }
+
+    refillGrid() {
+        for (let col = 0; col < CONFIG.gridSize; col++) {
+            let emptySlots = 0;
+
+            // 1. 下落逻辑
+            for (let row = CONFIG.gridSize - 1; row >= 0; row--) {
+                if (this.grid[row][col] === null) {
+                    emptySlots++;
+                } else if (emptySlots > 0) {
+                    const tile = this.grid[row][col];
+                    const newRow = row + emptySlots;
+                    
+                    this.grid[newRow][col] = tile;
+                    this.grid[row][col] = null;
+                    tile.row = newRow;
+
+                    // 使用 GRID_OFFSET_Y 动态计算
+                    const targetY = (GRID_OFFSET_Y + CONFIG.tileSize / 2) + newRow * (CONFIG.tileSize + CONFIG.spacing);
+
+                    this.tweens.add({
+                        targets: tile.container,
+                        y: targetY,
+                        duration: 400,
+                        ease: 'Bounce.out'
+                    });
+                }
+            }
+
+            // 2. 生成新块
+            for (let i = 0; i < emptySlots; i++) {
+                const row = emptySlots - 1 - i;
+                const startX = GRID_OFFSET_X + CONFIG.tileSize / 2 + col * (CONFIG.tileSize + CONFIG.spacing);
+                // 初始位置在屏幕上方
+                const startY = -150 - i * (CONFIG.tileSize + CONFIG.spacing);
+                const targetY = (GRID_OFFSET_Y + CONFIG.tileSize / 2) + row * (CONFIG.tileSize + CONFIG.spacing);
+
+                const newTile = this.addTile(row, col, startX, startY);
+                
+                this.tweens.add({
+                    targets: newTile.container,
+                    y: targetY,
+                    duration: 500,
+                    delay: i * 60,
+                    ease: 'Bounce.out'
+                });
+            }
+        }
+    }
+}
+
+const gameConfig = {
+    type: Phaser.AUTO,
+    width: GAME_WIDTH,
+    height: GAME_HEIGHT,
+    backgroundColor: '#1a1a2e',
+    parent: 'game-container',
+    scene: MainScene,
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    }
+};
+
+const game = new Phaser.Game(gameConfig);
+
+</script>
+</body>
+</html>

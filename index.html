@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>数字迷阵 - Number Matrix (iPad Layout)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            color: white;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #game-container {
+            box-shadow: 0 0 30px rgba(0,0,0,0.6);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+    <!-- 引入 Phaser 3 -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <!-- 使用 ES6 模块导入 -->
+    <script type="module">
+        import { GameConfig } from './js/config/GameConfig.js';
+        import { MainScene } from './js/scenes/MainScene.js';
+
+        const gameConfig = {
+            type: Phaser.AUTO,
+            width: GameConfig.gameWidth,
+            height: GameConfig.gameHeight,
+            backgroundColor: '#1a1a2e',
+            parent: 'game-container',
+            scene: MainScene,
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            input: {
+                activePointers: 1,
+                smoothFactor: 0
+            }
+        };
+
+        const game = new Phaser.Game(gameConfig);
+    </script>
+</body>
+</html>
+
