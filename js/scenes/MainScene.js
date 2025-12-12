@@ -13,6 +13,13 @@ export class MainScene extends Phaser.Scene {
         this.config = GameConfig;
     }
 
+    init(data) {
+        // 接收场景参数
+        this.gameMode = data?.mode || 'single'; // 'single' 或 'multiplayer'
+        this.gameData = data?.gameData || null; // 对战模式的游戏数据
+        this.networkManager = data?.networkManager || null;
+    }
+
     preload() {
         this.generateTextures();
     }
@@ -21,8 +28,18 @@ export class MainScene extends Phaser.Scene {
         this.initGameState();
         this.createBackground();
         this.createUI();
-        this.createGrid();
-        this.setNewTarget();
+        
+        // 对战模式：使用同步的棋盘数据；单机模式：随机生成
+        if (this.gameMode === 'multiplayer' && this.gameData) {
+            this.createGridFromData(this.gameData.grid);
+            this.targetSum = this.gameData.targetSum;
+            this.targetText.setText(this.targetSum);
+            this.startCountdown(this.gameData.countdown);
+        } else {
+            this.createGrid();
+            this.setNewTarget();
+        }
+        
         this.setupInput();
         this.graphics = this.add.graphics();
     }
@@ -322,6 +339,90 @@ export class MainScene extends Phaser.Scene {
                 this.addTile(row, col, pos.x, pos.y);
             }
         }
+    }
+
+    /**
+     * 从数据创建网格（对战模式使用）
+     * @param {Array} gridData - 网格数据
+     */
+    createGridFromData(gridData) {
+        for (let row = 0; row < this.config.gridSize; row++) {
+            this.grid[row] = [];
+            for (let col = 0; col < this.config.gridSize; col++) {
+                const pos = GridUtils.getTilePosition(row, col, this.config);
+                const value = gridData[row][col];
+                this.addTile(row, col, pos.x, pos.y, value);
+            }
+        }
+    }
+
+    /**
+     * 开始倒计时（对战模式）
+     * @param {number} seconds - 倒计时秒数
+     */
+    startCountdown(seconds) {
+        this.timeRemaining = seconds || 180;
+        
+        // 创建倒计时文本
+        if (!this.countdownText) {
+            this.countdownText = this.add.text(
+                this.config.gameWidth / 2,
+                50,
+                this.formatTime(this.timeRemaining),
+                {
+                    fontSize: '48px',
+                    fontStyle: 'bold',
+                    color: '#ffdd00'
+                }
+            ).setOrigin(0.5);
+        }
+
+        // 创建倒计时事件
+        this.countdownTimer = this.time.addEvent({
+            delay: 1000,
+            callback: () => {
+                this.timeRemaining--;
+                if (this.countdownText) {
+                    this.countdownText.setText(this.formatTime(this.timeRemaining));
+                }
+
+                if (this.timeRemaining <= 0) {
+                    this.endGame();
+                }
+            },
+            loop: true
+        });
+    }
+
+    /**
+     * 格式化时间显示
+     * @param {number} seconds - 秒数
+     * @returns {string} 格式化后的时间字符串
+     */
+    formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    /**
+     * 游戏结束（对战模式）
+     */
+    endGame() {
+        if (this.countdownTimer) {
+            this.countdownTimer.remove();
+        }
+
+        // TODO: 发送最终分数到服务器
+        if (this.networkManager) {
+            this.networkManager.submitScore(this.score);
+        }
+
+        // 切换到结算场景
+        this.scene.start('ResultScene', {
+            score: this.score,
+            networkManager: this.networkManager
+        });
     }
 
     /**
@@ -810,6 +911,11 @@ export class MainScene extends Phaser.Scene {
         
         this.score += points;
         this.scoreText.setText(this.score);
+
+        // 对战模式：同步分数到服务器
+        if (this.gameMode === 'multiplayer' && this.networkManager) {
+            this.networkManager.submitScore(this.score);
+        }
 
         if (this.selectedTiles.length > 0) {
             const lastTile = this.selectedTiles[this.selectedTiles.length - 1];
