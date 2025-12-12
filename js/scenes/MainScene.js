@@ -41,6 +41,7 @@ export class MainScene extends Phaser.Scene {
         this.score = 0;
         this.targetSum = 0;
         this.currentSelectionSum = 0;
+        this.currentOperationMode = this.config.operationModes.ADD; // 默认加法模式
     }
 
     /**
@@ -92,6 +93,9 @@ export class MainScene extends Phaser.Scene {
             color: ui.title.color
         }).setOrigin(0.5);
 
+        // 运算模式选择器
+        this.createOperationModeSelector(centerX, ui.operationMode.y);
+
         // 目标数字显示
         const targetBgY = ui.target.bgY;
         this.add.circle(
@@ -106,7 +110,7 @@ export class MainScene extends Phaser.Scene {
         
         this.add.text(
             centerX, 
-            targetBgY - 60, 
+            targetBgY - 50, 
             ui.target.label, 
             { 
                 fontSize: ui.target.labelFontSize, 
@@ -114,14 +118,32 @@ export class MainScene extends Phaser.Scene {
             }
         ).setOrigin(0.5);
         
-        this.targetText = this.add.text(centerX, targetBgY + 10, '0', {
+        this.targetText = this.add.text(centerX, targetBgY + 5, '0', {
             fontSize: ui.target.valueFontSize,
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: ui.target.valueColor
         }).setOrigin(0.5);
 
-        // 当前选中总和
+        // 表达式显示
+        const expressionY = ui.expression.y;
+        this.add.text(
+            centerX, 
+            expressionY, 
+            ui.expression.label, 
+            { 
+                fontSize: ui.expression.labelFontSize, 
+                color: ui.expression.labelColor 
+            }
+        ).setOrigin(0.5);
+        
+        this.expressionText = this.add.text(centerX, expressionY + 30, '', {
+            fontSize: ui.expression.valueFontSize,
+            fontStyle: 'bold',
+            color: ui.expression.valueColor
+        }).setOrigin(0.5);
+
+        // 当前结果
         const currentSumY = ui.currentSum.y;
         this.add.text(
             centerX, 
@@ -158,6 +180,86 @@ export class MainScene extends Phaser.Scene {
     }
 
     /**
+     * 创建运算模式选择器
+     */
+    createOperationModeSelector(centerX, y) {
+        const { ui, operationModes, operationSymbols } = this.config;
+        const { buttonSize, buttonSpacing, labelFontSize, labelColor } = ui.operationMode;
+        
+        // 标签
+        this.add.text(centerX, y, ui.operationMode.label, {
+            fontSize: labelFontSize,
+            color: labelColor
+        }).setOrigin(0.5);
+
+        // 创建四个运算按钮
+        const modes = [
+            { mode: operationModes.ADD, symbol: operationSymbols.add },
+            { mode: operationModes.SUBTRACT, symbol: operationSymbols.subtract },
+            { mode: operationModes.MULTIPLY, symbol: operationSymbols.multiply },
+            { mode: operationModes.DIVIDE, symbol: operationSymbols.divide }
+        ];
+
+        this.operationButtons = [];
+        const totalWidth = modes.length * buttonSize + (modes.length - 1) * buttonSpacing;
+        const startX = centerX - totalWidth / 2 + buttonSize / 2;
+
+        modes.forEach((item, index) => {
+            const x = startX + index * (buttonSize + buttonSpacing);
+            const isActive = item.mode === this.currentOperationMode;
+            
+            const button = this.add.circle(
+                x,
+                y + 35,
+                buttonSize / 2,
+                isActive ? ui.operationMode.activeColor : ui.operationMode.inactiveColor
+            ).setInteractive({ useHandCursor: true })
+             .setStrokeStyle(2, isActive ? 0xffffff : 0x888888);
+
+            const symbolText = this.add.text(x, y + 35, item.symbol, {
+                fontSize: ui.operationMode.fontSize,
+                color: ui.operationMode.textColor,
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+
+            // 绑定点击事件
+            button.on('pointerdown', () => {
+                this.switchOperationMode(item.mode);
+            });
+
+            this.operationButtons.push({
+                mode: item.mode,
+                button: button,
+                text: symbolText
+            });
+        });
+    }
+
+    /**
+     * 切换运算模式
+     */
+    switchOperationMode(newMode) {
+        if (this.currentOperationMode === newMode) return;
+        
+        this.currentOperationMode = newMode;
+        
+        // 更新按钮外观
+        this.operationButtons.forEach(btn => {
+            const isActive = btn.mode === newMode;
+            btn.button.setFillStyle(
+                isActive ? this.config.ui.operationMode.activeColor : this.config.ui.operationMode.inactiveColor
+            );
+            btn.button.setStrokeStyle(2, isActive ? 0xffffff : 0x888888);
+        });
+
+        // 清除当前选择
+        this.clearSelection();
+        
+        // 设置新的目标数字
+        this.setNewTarget();
+    }
+
+    /**
      * 创建游戏网格
      */
     createGrid() {
@@ -180,9 +282,10 @@ export class MainScene extends Phaser.Scene {
      * @returns {Tile} 创建的Tile对象
      */
     addTile(row, col, x, y, value = null) {
+        const modeRules = this.config.rules[this.currentOperationMode];
         const tileValue = value || Phaser.Math.Between(
-            this.config.rules.minTileValue, 
-            this.config.rules.maxTileValue
+            modeRules.minTileValue, 
+            modeRules.maxTileValue
         );
         
         const tile = new Tile(
@@ -211,9 +314,10 @@ export class MainScene extends Phaser.Scene {
      * 设置新的目标数字
      */
     setNewTarget() {
+        const modeRules = this.config.rules[this.currentOperationMode];
         this.targetSum = Phaser.Math.Between(
-            this.config.rules.minTargetSum, 
-            this.config.rules.maxTargetSum
+            modeRules.minTarget, 
+            modeRules.maxTarget
         );
         
         this.tweens.add({
@@ -294,7 +398,6 @@ export class MainScene extends Phaser.Scene {
      */
     addToSelection(tile) {
         this.selectedTiles.push(tile);
-        this.currentSelectionSum += tile.value;
         this.updateSelectionVisuals();
         tile.playSelectAnimation();
     }
@@ -303,26 +406,98 @@ export class MainScene extends Phaser.Scene {
      * 从选中列表移除
      */
     removeFromSelection() {
-        const removed = this.selectedTiles.pop();
-        this.currentSelectionSum -= removed.value;
+        this.selectedTiles.pop();
         this.updateSelectionVisuals();
+    }
+
+    /**
+     * 根据当前运算模式计算结果
+     * @returns {number} 计算结果
+     */
+    calculateResult() {
+        if (this.selectedTiles.length === 0) return 0;
+        if (this.selectedTiles.length === 1) return this.selectedTiles[0].value;
+
+        const values = this.selectedTiles.map(t => t.value);
+        
+        switch (this.currentOperationMode) {
+            case this.config.operationModes.ADD:
+                return values.reduce((sum, val) => sum + val, 0);
+            
+            case this.config.operationModes.SUBTRACT:
+                return values.reduce((result, val, index) => 
+                    index === 0 ? val : result - val
+                );
+            
+            case this.config.operationModes.MULTIPLY:
+                return values.reduce((product, val) => product * val, 1);
+            
+            case this.config.operationModes.DIVIDE:
+                let result = values[0];
+                for (let i = 1; i < values.length; i++) {
+                    if (values[i] === 0) return NaN; // 除零错误
+                    result = result / values[i];
+                }
+                // 检查是否为整数
+                return Number.isInteger(result) ? result : NaN;
+            
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * 生成运算表达式字符串
+     * @returns {string} 表达式字符串
+     */
+    generateExpressionString() {
+        if (this.selectedTiles.length === 0) return '';
+        if (this.selectedTiles.length === 1) {
+            return `${this.selectedTiles[0].value}`;
+        }
+
+        const symbol = this.config.operationSymbols[this.currentOperationMode];
+        const values = this.selectedTiles.map(t => t.value);
+        return values.join(` ${symbol} `);
     }
 
     /**
      * 更新选中视觉效果
      */
     updateSelectionVisuals() {
-        this.currentSumText.setText(this.currentSelectionSum);
+        this.currentSelectionSum = this.calculateResult();
+        const expression = this.generateExpressionString();
         
-        if (this.currentSelectionSum === this.targetSum) {
-            this.currentSumText.setColor(this.config.colors.targetMatch);
-            this.targetText.setColor(this.config.colors.targetMatch);
-        } else if (this.currentSelectionSum > this.targetSum) {
+        // 更新表达式显示
+        if (expression) {
+            const result = this.currentSelectionSum;
+            if (!isNaN(result)) {
+                this.expressionText.setText(`${expression} = ${result}`);
+            } else {
+                this.expressionText.setText(`${expression} = Invalid`);
+            }
+        } else {
+            this.expressionText.setText('');
+        }
+        
+        // 更新结果显示
+        if (isNaN(this.currentSelectionSum)) {
+            this.currentSumText.setText('Invalid');
             this.currentSumText.setColor(this.config.colors.penalty);
             this.targetText.setColor(this.config.colors.text);
         } else {
-            this.currentSumText.setColor(this.config.colors.currentSum);
-            this.targetText.setColor(this.config.colors.text);
+            this.currentSumText.setText(this.currentSelectionSum);
+            
+            if (this.currentSelectionSum === this.targetSum) {
+                this.currentSumText.setColor(this.config.colors.targetMatch);
+                this.targetText.setColor(this.config.colors.targetMatch);
+            } else if (this.currentSelectionSum > this.targetSum) {
+                this.currentSumText.setColor(this.config.colors.penalty);
+                this.targetText.setColor(this.config.colors.text);
+            } else {
+                this.currentSumText.setColor(this.config.colors.currentSum);
+                this.targetText.setColor(this.config.colors.text);
+            }
         }
     }
 
@@ -416,10 +591,14 @@ export class MainScene extends Phaser.Scene {
         this.isDragging = false;
         this.graphics.clear();
 
-        if (this.currentSelectionSum === this.targetSum && this.selectedTiles.length > 0) {
+        // 检查结果是否有效且匹配目标
+        if (!isNaN(this.currentSelectionSum) && 
+            this.currentSelectionSum === this.targetSum && 
+            this.selectedTiles.length > 0) {
             this.successMatch();
         } else {
-            if (this.selectedTiles.length > 1) {
+            // 如果结果无效（如除零）或超过目标，则失败
+            if (this.selectedTiles.length > 1 || isNaN(this.currentSelectionSum)) {
                 this.failMatch();
             }
         }
@@ -436,15 +615,16 @@ export class MainScene extends Phaser.Scene {
         this.currentSumText.setText('0');
         this.currentSumText.setColor(this.config.colors.currentSum);
         this.targetText.setColor(this.config.colors.text);
+        this.expressionText.setText('');
     }
 
     /**
      * 成功匹配处理
      */
     successMatch() {
-        const { rules } = this.config;
-        const points = this.selectedTiles.length * rules.basePointsPerTile + 
-                      (this.selectedTiles.length > rules.bonusTileCount ? rules.bonusPoints : 0);
+        const modeRules = this.config.rules[this.currentOperationMode];
+        const points = this.selectedTiles.length * modeRules.basePointsPerTile + 
+                      (this.selectedTiles.length > modeRules.bonusTileCount ? modeRules.bonusPoints : 0);
         
         this.score += points;
         this.scoreText.setText(this.score);
@@ -484,7 +664,8 @@ export class MainScene extends Phaser.Scene {
      * 失败匹配处理
      */
     failMatch() {
-        const penalty = this.config.rules.penaltyPoints;
+        const modeRules = this.config.rules[this.currentOperationMode];
+        const penalty = modeRules.penaltyPoints;
         this.score = Math.max(0, this.score - penalty);
         this.scoreText.setText(this.score);
         

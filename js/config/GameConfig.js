@@ -42,16 +42,64 @@ export const GameConfig = {
         targetMatch: '#00ff00'
     },
     
-    // 游戏规则配置
+    // 运算模式配置
+    operationModes: {
+        ADD: 'add',
+        SUBTRACT: 'subtract',
+        MULTIPLY: 'multiply',
+        DIVIDE: 'divide'
+    },
+    
+    // 运算模式显示符号
+    operationSymbols: {
+        add: '+',
+        subtract: '-',
+        multiply: '×',
+        divide: '÷'
+    },
+    
+    // 游戏规则配置（按运算模式）
     rules: {
-        minTargetSum: 10,
-        maxTargetSum: 30,
-        minTileValue: 1,
-        maxTileValue: 9,
-        basePointsPerTile: 10,
-        bonusPoints: 50,
-        bonusTileCount: 3,
-        penaltyPoints: 5
+        add: {
+            minTarget: 10,
+            maxTarget: 50,
+            minTileValue: 1,
+            maxTileValue: 9,
+            basePointsPerTile: 10,
+            bonusPoints: 50,
+            bonusTileCount: 3,
+            penaltyPoints: 5
+        },
+        subtract: {
+            minTarget: 1,
+            maxTarget: 20,
+            minTileValue: 1,
+            maxTileValue: 9,
+            basePointsPerTile: 10,
+            bonusPoints: 50,
+            bonusTileCount: 3,
+            penaltyPoints: 5
+        },
+        multiply: {
+            minTarget: 10,
+            maxTarget: 200,
+            minTileValue: 1,
+            maxTileValue: 9,
+            basePointsPerTile: 15,
+            bonusPoints: 75,
+            bonusTileCount: 3,
+            penaltyPoints: 5
+        },
+        divide: {
+            minTarget: 1,
+            maxTarget: 20,
+            minTileValue: 1,
+            maxTileValue: 9,
+            basePointsPerTile: 15,
+            bonusPoints: 75,
+            bonusTileCount: 3,
+            penaltyPoints: 5
+        }
     },
     
     // 动画配置
@@ -82,34 +130,54 @@ export const GameConfig = {
     // UI 文本配置
     ui: {
         title: {
-            text: '数字迷阵',
+            text: 'Number Maze',
             fontSize: '36px',
             fontStyle: 'bold',
             color: '#ffffff',
-            y: 80
+            y: 60
+        },
+        operationMode: {
+            label: 'Operation',
+            labelFontSize: '20px',
+            labelColor: '#aaaaaa',
+            buttonSize: 50,
+            buttonSpacing: 10,
+            y: 120,
+            activeColor: 0x00ffcc,
+            inactiveColor: 0x444466,
+            textColor: '#ffffff',
+            fontSize: '28px'
         },
         target: {
-            label: '目标数字',
+            label: 'Target',
             labelFontSize: '24px',
             labelColor: '#aaaaaa',
-            valueFontSize: '96px',
+            valueFontSize: '72px',
             valueColor: '#ffffff',
-            bgY: 250,
-            bgRadius: 110,
+            bgY: 240,
+            bgRadius: 90,
             bgColor: 0x16213e,
             bgStrokeColor: 0x444466,
             bgStrokeWidth: 4
         },
+        expression: {
+            label: 'Expression',
+            labelFontSize: '18px',
+            labelColor: '#aaaaaa',
+            valueFontSize: '24px',
+            valueColor: '#ffdd00',
+            y: 320
+        },
         currentSum: {
-            label: '当前总和',
+            label: 'Current Result',
             labelFontSize: '24px',
             labelColor: '#aaaaaa',
-            valueFontSize: '60px',
+            valueFontSize: '48px',
             valueColor: '#ffdd00',
-            y: 480
+            y: 420
         },
         score: {
-            label: '得分',
+            label: 'Score',
             labelFontSize: '24px',
             labelColor: '#aaaaaa',
             valueFontSize: '48px',
