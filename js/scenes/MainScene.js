@@ -124,7 +124,7 @@ export class MainScene extends Phaser.Scene {
 
         // 表达式显示（支持换行）
         const expressionY = ui.expression.y;
-        this.add.text(
+        this.expressionLabel = this.add.text(
             centerX, 
             expressionY, 
             ui.expression.label, 
@@ -289,16 +289,22 @@ export class MainScene extends Phaser.Scene {
     }
 
     /**
-     * 切换当前结果显示/隐藏
+     * 切换当前结果显示/隐藏（同时隐藏/显示计算过程）
      */
     toggleCurrentResultVisibility() {
         this.currentSumVisible = !this.currentSumVisible;
         
         if (this.currentSumVisible) {
+            // 显示所有相关元素
+            this.expressionLabel.setVisible(true);
+            this.expressionText.setVisible(true);
             this.currentSumLabel.setVisible(true);
             this.currentSumText.setVisible(true);
             this.currentSumToggleButton.setText('Hide');
         } else {
+            // 隐藏所有相关元素
+            this.expressionLabel.setVisible(false);
+            this.expressionText.setVisible(false);
             this.currentSumLabel.setVisible(false);
             this.currentSumText.setVisible(false);
             this.currentSumToggleButton.setText('Show');
